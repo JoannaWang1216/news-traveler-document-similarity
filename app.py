@@ -1,10 +1,77 @@
 import json
 import os
 import random
+from typing import Literal, Optional, TypedDict
 
 import requests
 from flask import Flask, request
 from newsdataapi import NewsDataApiClient
+
+
+class OppositeNewsRequest(TypedDict):
+    content: str
+    keyword: str
+
+
+class SentimentRequest(TypedDict):
+    content: str
+
+
+class ErrorResponse(TypedDict):
+    message: str
+
+
+class InternalErrorResponse(TypedDict):
+    message: str
+    debug: str
+
+
+class GatewayTimeoutResponse(TypedDict):
+    reason: str
+
+
+class Sentiment(TypedDict):
+    kind: Literal["positive", "neutral", "negative"]
+    confidence: float
+
+
+class News(TypedDict):
+    source: str
+    author: Optional[str]
+    title: str
+    description: str
+    content: str
+    url: str
+    urlToImage: Optional[str]
+    publishedAt: str
+
+
+class NewsWithSentiment(TypedDict):
+    source: str
+    author: Optional[str]
+    title: str
+    description: str
+    content: str
+    url: str
+    urlToImage: Optional[str]
+    publishedAt: str
+    sentiment: Sentiment
+    bias: float
+
+
+class SearchResponse(TypedDict):
+    count: int
+    results: list[News]
+
+
+class OppositeNewsResponse(TypedDict):
+    count: int
+    results: list[NewsWithSentiment]
+
+
+class SentimentResponse(TypedDict):
+    sentiment: Sentiment
+    bias: float
 
 
 def send_newsapi_request(keyword: str) -> tuple[dict, int]:
