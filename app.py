@@ -61,12 +61,12 @@ class NewsWithSentiment(TypedDict):
 
 class SearchResponse(TypedDict):
     count: int
-    results: News
+    results: list[News]
 
 
 class OppositeNewsResponse(TypedDict):
     count: int
-    results: NewsWithSentiment
+    results: list[NewsWithSentiment]
 
 
 class SentimentResponse(TypedDict):
