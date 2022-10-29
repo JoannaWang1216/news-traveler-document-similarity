@@ -4,7 +4,6 @@ version = "0.1.0"
 description = ""
 authors = ["JoannaWang1216 <joannaahj@gmail.com>"]
 readme = "README.md"
-packages = [{include = "news_traveler_document_similarity"}]
 
 [tool.poetry.dependencies]
 python = "~3.9"
