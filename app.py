@@ -36,23 +36,23 @@ class Sentiment(TypedDict):
 
 
 class News(TypedDict):
-    source: Optional[str]
+    source: str
     author: Optional[str]
-    title: Optional[str]
-    description: Optional[str]
-    content: Optional[str]
-    url: Optional[str]
+    title: str
+    description: str
+    content: str
+    url: str
     urlToImage: Optional[str]
     publishedAt: Optional[str]
 
 
 class NewsWithSentiment(TypedDict):
-    source: Optional[str]
+    source: str
     author: Optional[str]
-    title: Optional[str]
-    description: Optional[str]
-    content: Optional[str]
-    url: Optional[str]
+    title: str
+    description: str
+    content: str
+    url: str
     urlToImage: Optional[str]
     publishedAt: Optional[str]
     sentiment: Sentiment
@@ -182,6 +182,11 @@ def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, Search
                 "publishedAt": news["pubDate"],
             }
             for news in response["results"]
+            if news["source_id"]
+            and news["title"]
+            and news["description"]
+            and news["content"]
+            and news["link"]
         ]
     }
 
@@ -214,6 +219,11 @@ def request_newsapi(params: NewsApiParam) -> Union[SearchSuccess, SearchError]:
                 "publishedAt": news["publishedAt"],
             }
             for news in response.json()["articles"]
+            if news["source"]
+            and news["title"]
+            and news["description"]
+            and news["content"]
+            and news["url"]
         ]
     }
 
