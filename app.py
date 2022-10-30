@@ -1,7 +1,7 @@
 import json
 import os
 import random
-from typing import Literal, Optional, TypedDict
+from typing import Any, Callable, Literal, Optional, TypedDict, TypeVar, Union
 
 import requests
 from flask import Flask, request
@@ -43,7 +43,7 @@ class News(TypedDict):
     content: str
     url: str
     urlToImage: Optional[str]
-    publishedAt: str
+    publishedAt: Optional[str]
 
 
 class NewsWithSentiment(TypedDict):
@@ -54,7 +54,7 @@ class NewsWithSentiment(TypedDict):
     content: str
     url: str
     urlToImage: Optional[str]
-    publishedAt: str
+    publishedAt: Optional[str]
     sentiment: Sentiment
     bias: float
 
@@ -72,6 +72,176 @@ class OppositeNewsResponse(TypedDict):
 class SentimentResponse(TypedDict):
     sentiment: Sentiment
     bias: float
+
+
+class NewsDataApiParam(TypedDict):
+    country: Optional[str]
+    category: Optional[str]
+    language: Optional[str]
+    domain: Optional[str]
+    q: str
+    qInTitle: Optional[str]
+    page: Optional[int]
+
+
+class NewsApiParam(TypedDict):
+    q: str
+    searchIn: Optional[list[str]]
+    sources: Optional[list[str]]
+    domains: Optional[list[str]]
+    excludeDomains: Optional[list[str]]
+    startFrom: Optional[str]
+    endTo: Optional[str]
+    language: Optional[str]
+    sortBy: Optional[Literal["relevancy", "popularity", "publishedAt"]]
+    pageSize: Optional[int]
+    page: Optional[int]
+
+
+class SearchSuccess(TypedDict):
+    news: list[News]
+
+
+class SearchError(TypedDict):
+    status_code: int
+    message: str
+
+
+# A workaround for not using NotRequired
+def generate_newsdataapi_param(
+    q,
+    country=None,
+    category=None,
+    language=None,
+    domain=None,
+    q_in_title=None,
+    page=None,
+) -> NewsDataApiParam:
+    return {
+        "q": q,
+        "country": country,
+        "category": category,
+        "language": language,
+        "domain": domain,
+        "qInTitle": q_in_title,
+        "page": page,
+    }
+
+
+# A workaround for not using NotRequired
+def generate_newapi_param(
+    q,
+    search_in=None,
+    sources=None,
+    domains=None,
+    exclude_domains=None,
+    start_from=None,
+    end_to=None,
+    language=None,
+    sort_by=None,
+    page_size=None,
+    page=None,
+) -> NewsApiParam:
+    return {
+        "q": q,
+        "searchIn": search_in,
+        "sources": sources,
+        "domains": domains,
+        "excludeDomains": exclude_domains,
+        "startFrom": start_from,
+        "endTo": end_to,
+        "language": language,
+        "sortBy": sort_by,
+        "pageSize": page_size,
+        "page": page,
+    }
+
+
+SearchParam = TypeVar("SearchParam", NewsDataApiParam, NewsApiParam)
+
+
+def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, SearchError]:
+    api_key = os.getenv("NEWSDATAAPI_KEY")
+    api = NewsDataApiClient(apikey=api_key)
+    response = api.news_api(**params)
+    if response["status"] == "error":
+        return {
+            "status_code": 400,
+            "message": f'{response["results"]["code"]}, {response["results"]["message"]}',
+        }
+    return {
+        "news": [
+            {
+                "source": news["source_id"],
+                "author": ",".join(news["creator"]),
+                "title": news["title"],
+                "description": news["description"],
+                "content": news["content"],
+                "url": news["link"],
+                "urlToImage": news["image_url"],
+                "publishedAt": news["pubDate"],
+            }
+            for news in response["results"]
+            if news["source_id"]
+            and news["title"]
+            and news["description"]
+            and news["content"]
+            and news["link"]
+        ]
+    }
+
+
+def request_newsapi(params: NewsApiParam) -> Union[SearchSuccess, SearchError]:
+    api_key = os.getenv("NEWSAPI_KEY")
+    _params: dict[str, Any] = {k: v for k, v in params.items() if v is not None} | {
+        "apiKey": api_key
+    }
+    response = requests.get(
+        url="https://newsapi.org/v2/everything",
+        params=_params,
+        timeout=5,
+    )
+    if not response.ok:
+        return {
+            "status_code": response.status_code,
+            "message": f'{response.json()["code"]}, {response.json()["message"]}',
+        }
+    return {
+        "news": [
+            {
+                "source": news["source"],
+                "author": news["author"],
+                "title": news["title"],
+                "description": news["description"],
+                "content": news["content"],
+                "url": news["url"],
+                "urlToImage": news["urlToImage"],
+                "publishedAt": news["publishedAt"],
+            }
+            for news in response.json()["articles"]
+            if news["source"]
+            and news["title"]
+            and news["description"]
+            and news["content"]
+            and news["url"]
+        ]
+    }
+
+
+def search_news(
+    params: SearchParam,
+    call_api: Callable[[SearchParam], Union[SearchSuccess, SearchError]],
+) -> Union[SearchSuccess, SearchError]:
+    return call_api(params)
+
+
+# Usage:
+search_result = search_news(
+    generate_newapi_param("Taiwan", language="en"), request_newsapi
+)
+search_result2 = search_news(
+    generate_newsdataapi_param("Taiwan", language="en"), request_newsdataapi
+)
 
 
 def send_newsapi_request(keyword: str) -> tuple[dict, int]:
