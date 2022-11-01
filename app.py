@@ -7,6 +7,14 @@ import requests
 from flask import Flask, request
 from newsdataapi import NewsDataApiClient
 
+from news_traveler_sentiment_analysis.sentiment_analysis import (
+    sentiment_analysis_per_document,
+)
+
+NEWSDATAAPI_KEY = os.environ["NEWSDATAAPI_KEY"]
+NEWSAPI_KEY = os.environ["NEWSAPI_KEY"]
+BIASAPI_KEY = os.environ["BIASAPI_KEY"]
+
 
 class OppositeNewsRequest(TypedDict):
     content: str
@@ -107,6 +115,41 @@ class SearchError(TypedDict):
     message: str
 
 
+class SentimentSuccess(TypedDict):
+    sentiment: Sentiment
+    bias: float
+
+
+class SentimentError(TypedDict):
+    status_code: int
+    message: str
+    sentiment: Optional[Sentiment]
+    bias: Optional[float]
+
+
+class BiasAnalysisSuccess(TypedDict):
+    value: float
+
+
+class BiasAnalysisError(TypedDict):
+    status_code: int
+    message: str
+
+
+class SentimentAnalysisSuccess(TypedDict):
+    value: Sentiment
+
+
+class SentimentAnalysisError(TypedDict):
+    status_code: int
+    message: str
+
+
+class SentimentAnalysisResult(TypedDict):
+    status_code: int
+    value: Sentiment
+
+
 # A workaround for not using NotRequired
 def generate_newsdataapi_param(
     q,
@@ -161,8 +204,7 @@ SearchParam = TypeVar("SearchParam", NewsDataApiParam, NewsApiParam)
 
 
 def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, SearchError]:
-    api_key = os.getenv("NEWSDATAAPI_KEY")
-    api = NewsDataApiClient(apikey=api_key)
+    api = NewsDataApiClient(apikey=NEWSDATAAPI_KEY)
     response = api.news_api(**params)
     if response["status"] == "error":
         return {
@@ -192,9 +234,8 @@ def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, Search
 
 
 def request_newsapi(params: NewsApiParam) -> Union[SearchSuccess, SearchError]:
-    api_key = os.getenv("NEWSAPI_KEY")
     _params: dict[str, Any] = {k: v for k, v in params.items() if v is not None} | {
-        "apiKey": api_key
+        "apiKey": NEWSAPI_KEY
     }
     response = requests.get(
         url="https://newsapi.org/v2/everything",
@@ -225,6 +266,64 @@ def request_newsapi(params: NewsApiParam) -> Union[SearchSuccess, SearchError]:
             and news["content"]
             and news["url"]
         ]
+    }
+
+
+def request_biasapi(article: str) -> Union[BiasAnalysisSuccess, BiasAnalysisError]:
+    response = requests.post(
+        "https://api.thebipartisanpress.com/api/endpoints/beta/robert",
+        data={"API": BIASAPI_KEY, "Text": article},
+        timeout=20,
+    )
+    if response.ok:
+        return {"value": float(response.content.decode("utf-8")) / 42}
+    else:
+        return {
+            "status_code": response.status_code,
+            "message": response.content.decode("utf-8"),
+        }
+
+
+def request_sentimentapi(
+    article: str,
+) -> Union[SentimentAnalysisSuccess, SentimentAnalysisError]:
+    result = sentiment_analysis_per_document(article)
+    return {
+        "value": {
+            "kind": "positive"
+            if result["label"] == "POS"
+            else "neutral"
+            if result["label"] == "NEU"
+            else "negative",
+            "confidence": result["score"],
+        }
+    }
+
+
+def analyze_sentiments(
+    article: str,
+    call_biasapi: Callable[[str], Union[BiasAnalysisSuccess, BiasAnalysisError]],
+    call_sentimentapi: Callable[
+        [str], Union[SentimentAnalysisSuccess, SentimentAnalysisError]
+    ],
+) -> Union[SentimentSuccess, SentimentError]:
+    bias_result = call_biasapi(article)
+    sentiment_result = call_sentimentapi(article)
+    if "value" in bias_result and "value" in sentiment_result:
+        # Type narrowing problem refer to
+        # (https://github.com/python/mypy/issues/11080?fbclid=IwAR3F5AA-eLgmLn3fWrJxeoakOZVO5hICFf7AZkTuygW6jl6Mbduj7MDtDHk)
+        return {
+            "bias": bias_result["value"],  # type: ignore
+            "sentiment": sentiment_result["value"],  # type: ignore
+        }
+    return {
+        "bias": None if "value" not in bias_result else bias_result["value"],  # type: ignore
+        "sentiment": None
+        if "value" not in sentiment_result
+        else sentiment_result["value"],  # type: ignore
+        "status_code": 400,
+        "message": f'bias: {"" if "message" not in bias_result else bias_result["message"]}'  # type: ignore
+        + f'sentiment: {"" if "message" not in sentiment_result else sentiment_result["message"]}',  # type: ignore
     }
 
 
@@ -340,7 +439,7 @@ def filter_opposite_semantic(response: dict, current_semantic: dict) -> dict:
             response["results"],
         )
     )
-    filtered_response["totalResults"] = len(list(filtered_response["results"]))
+    filtered_response["totalResults"] = len(list(filtered_response["results"]))  # type: ignore
     return filtered_response
 
 
