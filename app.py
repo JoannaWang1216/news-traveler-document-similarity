@@ -11,6 +11,10 @@ from news_traveler_sentiment_analysis.sentiment_analysis import (
     sentiment_analysis_per_document,
 )
 
+NEWSDATAAPI_KEY = os.environ["NEWSDATAAPI_KEY"]
+NEWSAPI_KEY = os.environ["NEWSAPI_KEY"]
+BIASAPI_KEY = os.environ["BIASAPI_KEY"]
+
 
 class OppositeNewsRequest(TypedDict):
     content: str
@@ -200,8 +204,7 @@ SearchParam = TypeVar("SearchParam", NewsDataApiParam, NewsApiParam)
 
 
 def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, SearchError]:
-    api_key = os.environ.get("NEWSDATAAPI_KEY")
-    api = NewsDataApiClient(apikey=api_key)
+    api = NewsDataApiClient(apikey=NEWSDATAAPI_KEY)
     response = api.news_api(**params)
     if response["status"] == "error":
         return {
@@ -231,9 +234,8 @@ def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, Search
 
 
 def request_newsapi(params: NewsApiParam) -> Union[SearchSuccess, SearchError]:
-    api_key = os.environ.get("NEWSAPI_KEY")
     _params: dict[str, Any] = {k: v for k, v in params.items() if v is not None} | {
-        "apiKey": api_key
+        "apiKey": NEWSAPI_KEY
     }
     response = requests.get(
         url="https://newsapi.org/v2/everything",
@@ -270,7 +272,7 @@ def request_newsapi(params: NewsApiParam) -> Union[SearchSuccess, SearchError]:
 def request_biasapi(article: str) -> Union[BiasAnalysisSuccess, BiasAnalysisError]:
     response = requests.post(
         "https://api.thebipartisanpress.com/api/endpoints/beta/robert",
-        data={"API": os.environ.get("BIASAPI_KEY"), "Text": article},
+        data={"API": BIASAPI_KEY, "Text": article},
         timeout=20,
     )
     if response.ok:
@@ -437,7 +439,7 @@ def filter_opposite_semantic(response: dict, current_semantic: dict) -> dict:
             response["results"],
         )
     )
-    filtered_response["totalResults"] = len(list(filtered_response["results"]))
+    filtered_response["totalResults"] = len(list(filtered_response["results"]))  # type: ignore
     return filtered_response
 
 
