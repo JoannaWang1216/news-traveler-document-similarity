@@ -331,7 +331,7 @@ def analyze_sentiments(
         else cast(SentimentAnalysisSuccess, sentiment_result)["value"],
         "status_code": http.HTTPStatus.BAD_REQUEST,
         "message": f'bias: {"" if "message" not in bias_result else cast(BiasAnalysisError, bias_result)["message"]}'
-        + f'sentiment: {"" if "message" not in sentiment_result else cast(SentimentAnalysisError, sentiment_result)["message"]}',
+        f'sentiment: {"" if "message" not in sentiment_result else cast(SentimentAnalysisError, sentiment_result)["message"]}',
     }
 
 
@@ -411,7 +411,8 @@ def get_opposite_news() -> tuple[
     if "news" not in search_result:
         search_result = cast(SearchError, search_result)
         return {
-            "message": f"newsdataapi status_code {search_result['status_code']} with message {search_result['message']}"
+            "message": f"newsdataapi status_code {search_result['status_code']} "
+            f"with message {search_result['message']}"
         }, http.HTTPStatus.INTERNAL_SERVER_ERROR
     search_result = cast(SearchSuccess, search_result)
     analyze_result = analyze_sentiments(article, request_biasapi, request_sentimentapi)
@@ -476,5 +477,6 @@ def search() -> tuple[
         }, http.HTTPStatus.OK
     search_result = cast(SearchError, search_result)
     return {
-        "message": f"newsdataapi status_code {search_result['status_code']} with message {search_result['message']}"
+        "message": f"newsdataapi status_code {search_result['status_code']} "
+        f"with message {search_result['message']}"
     }, http.HTTPStatus.INTERNAL_SERVER_ERROR
