@@ -290,6 +290,10 @@ def request_biasapi(article: str) -> Union[BiasAnalysisSuccess, BiasAnalysisErro
         }
 
 
+def request_biasapi_mock(article: str) -> Union[BiasAnalysisSuccess, BiasAnalysisError]:
+    return {"value": (abs(hash(article)) % 100) / 50.0 - 1.0}
+
+
 def request_sentimentapi(
     article: str,
 ) -> Union[SentimentAnalysisSuccess, SentimentAnalysisError]:
@@ -362,7 +366,9 @@ def get_news_sentiment() -> tuple[
         }, http.HTTPStatus.BAD_REQUEST
     except KeyError as e:
         return {"message": "key not found: content"}, http.HTTPStatus.BAD_REQUEST
-    analyze_result = analyze_sentiments(article, request_biasapi, request_sentimentapi)
+    analyze_result = analyze_sentiments(
+        article, request_biasapi_mock, request_sentimentapi
+    )
     if "status_code" not in analyze_result:
         analyze_result = cast(SentimentSuccess, analyze_result)
         return {
@@ -415,7 +421,9 @@ def get_opposite_news() -> tuple[
             f"with message {search_result['message']}"
         }, http.HTTPStatus.INTERNAL_SERVER_ERROR
     search_result = cast(SearchSuccess, search_result)
-    analyze_result = analyze_sentiments(article, request_biasapi, request_sentimentapi)
+    analyze_result = analyze_sentiments(
+        article, request_biasapi_mock, request_sentimentapi
+    )
     if "status_code" in analyze_result:
         analyze_result = cast(SentimentError, analyze_result)
         return {
@@ -432,7 +440,7 @@ def get_opposite_news() -> tuple[
         if len(filtered_results) == 3:
             break
         analyze_result = analyze_sentiments(
-            news["content"], request_biasapi, request_sentimentapi
+            news["content"], request_biasapi_mock, request_sentimentapi
         )
         if "status_code" in analyze_result:
             analyze_result = cast(SentimentError, analyze_result)
