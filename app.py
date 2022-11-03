@@ -1,7 +1,7 @@
 import json
 import os
 import random
-from typing import Any, Callable, Literal, Optional, TypedDict, TypeVar, Union
+from typing import Any, Callable, Literal, Optional, TypedDict, TypeVar, Union, cast
 
 import requests
 from flask import Flask, request
@@ -310,20 +310,22 @@ def analyze_sentiments(
     bias_result = call_biasapi(article)
     sentiment_result = call_sentimentapi(article)
     if "value" in bias_result and "value" in sentiment_result:
-        # Type narrowing problem refer to
-        # (https://github.com/python/mypy/issues/11080?fbclid=IwAR3F5AA-eLgmLn3fWrJxeoakOZVO5hICFf7AZkTuygW6jl6Mbduj7MDtDHk)
+        bias_result = cast(BiasAnalysisSuccess, bias_result)
+        sentiment_result = cast(SentimentAnalysisSuccess, sentiment_result)
         return {
-            "bias": bias_result["value"],  # type: ignore
-            "sentiment": sentiment_result["value"],  # type: ignore
+            "bias": bias_result["value"],
+            "sentiment": sentiment_result["value"],
         }
     return {
-        "bias": None if "value" not in bias_result else bias_result["value"],  # type: ignore
+        "bias": None
+        if "value" not in bias_result
+        else cast(BiasAnalysisSuccess, bias_result)["value"],
         "sentiment": None
         if "value" not in sentiment_result
-        else sentiment_result["value"],  # type: ignore
+        else cast(SentimentAnalysisSuccess, sentiment_result)["value"],
         "status_code": 400,
-        "message": f'bias: {"" if "message" not in bias_result else bias_result["message"]}'  # type: ignore
-        + f'sentiment: {"" if "message" not in sentiment_result else sentiment_result["message"]}',  # type: ignore
+        "message": f'bias: {"" if "message" not in bias_result else cast(BiasAnalysisError, bias_result)["message"]}'
+        + f'sentiment: {"" if "message" not in sentiment_result else cast(SentimentAnalysisError, sentiment_result)["message"]}',
     }
 
 
@@ -332,15 +334,6 @@ def search_news(
     call_api: Callable[[SearchParam], Union[SearchSuccess, SearchError]],
 ) -> Union[SearchSuccess, SearchError]:
     return call_api(params)
-
-
-# Usage:
-search_result = search_news(
-    generate_newapi_param("Taiwan", language="en"), request_newsapi
-)
-search_result2 = search_news(
-    generate_newsdataapi_param("Taiwan", language="en"), request_newsdataapi
-)
 
 
 def send_newsapi_request(keyword: str) -> tuple[dict, int]:
@@ -446,8 +439,34 @@ def filter_opposite_semantic(response: dict, current_semantic: dict) -> dict:
 app = Flask(__name__)
 
 
-@app.route("/get-news-semantic", methods=["GET", "POST"])
-def get_news_semantic() -> tuple[str, int]:
+@app.route("/sentiment", methods=["POST"])
+def get_news_sentiment() -> tuple[dict, int]:
+    try:
+        article = json.loads(request.data.decode("utf-8"), errors="strict")["content"]
+    except json.JSONDecodeError as e:
+        return {"message": f"json decode error: {e.msg}"}, 400
+    except UnicodeDecodeError as e:
+        return {"message": f"string decode error: {e.reason}"}, 400
+    except KeyError as e:
+        return {"message": "key not found: content"}, 400
+    analyze_result = analyze_sentiments(article, request_biasapi, request_sentimentapi)
+    if "status_code" not in analyze_result:
+        return {
+            "sentiment": analyze_result["sentiment"],
+            "bias": analyze_result["bias"],
+        }, 200
+    analyze_result = cast(SentimentError, analyze_result)
+    return {
+        "message": "biasapi error "
+        if analyze_result["bias"] is None
+        else "" + "sentimentapi error "
+        if analyze_result["sentiment"] is None
+        else "" + f": {analyze_result['message']}"
+    }, 500
+
+
+@app.route("/old_get-news-semantic", methods=["GET", "POST"])
+def old_get_news_semantic() -> tuple[str, int]:
     try:
         request_content = json.loads(request.data.decode("utf-8"))
         if "selectedNews" not in request_content:
@@ -469,8 +488,71 @@ def get_news_semantic() -> tuple[str, int]:
         return "Internal error", 500
 
 
-@app.route("/opposite-semantic-news", methods=["GET", "POST"])
-def get_opposite_news() -> tuple[str, int]:
+@app.route("/opposite-sentiment-news", method=["POST"])
+def get_opposite_news() -> tuple[dict, int]:
+    try:
+        request_content = json.loads(request.data.decode("utf-8"), errors="strict")
+    except json.JSONDecodeError as e:
+        return {"message": f"json decode error: {e.msg}"}, 400
+    except UnicodeDecodeError as e:
+        return {"message": f"string decode error: {e.reason}"}, 400
+    try:
+        article = request_content["content"]
+    except KeyError as e:
+        return {"message": "key not found: content"}, 400
+    try:
+        keyword = request_content["keyword"]
+    except KeyError as e:
+        return {"message": "key not found: keyword"}, 400
+    search_result = search_news(
+        generate_newsdataapi_param(keyword, language="en"), request_newsdataapi
+    )
+    if "news" not in search_result:
+        return {
+            "message": f"newsdataapi status_code {search_result['status_code']} with message {search_result['message']}"  # type: ignore
+        }, 500
+    search_result = cast(SearchSuccess, search_result)
+    analyze_result = analyze_sentiments(article, request_biasapi, request_sentimentapi)
+    if "status_code" in analyze_result:
+        analyze_result = cast(SentimentError, analyze_result)
+        return {
+            "message": "biasapi error "
+            if analyze_result["bias"] is None
+            else "" + "sentimentapi error "
+            if analyze_result["sentiment"] is None
+            else "" + f": {analyze_result['message']}"
+        }, 500
+    current_sentiment = cast(SentimentSuccess, analyze_result)["sentiment"]
+    current_bias = cast(SentimentSuccess, analyze_result)["bias"]
+    filtered_results: list[NewsWithSentiment] = []
+    for news in search_result["news"]:
+        if len(filtered_results) == 3:
+            break
+        analyze_result = analyze_sentiments(
+            article, request_biasapi, request_sentimentapi
+        )
+        if "status_code" in analyze_result:
+            analyze_result = cast(SentimentError, analyze_result)
+            return {
+                "message": "biasapi error "
+                if analyze_result["bias"] is None
+                else "" + "sentimentapi error "
+                if analyze_result["sentiment"] is None
+                else "" + f": {analyze_result['message']}"
+            }, 500
+        analyze_result = cast(SentimentSuccess, analyze_result)
+        filtered_news = cast(
+            NewsWithSentiment, cast(dict, news) | cast(dict, analyze_result)
+        )
+        if analyze_result["sentiment"]["kind"] != current_sentiment["kind"]:
+            filtered_results.append(filtered_news)
+        elif analyze_result["bias"] * current_bias < 0:
+            filtered_results.append(filtered_news)
+    return {"news": filtered_results, "count": len(filtered_results)}, 200
+
+
+@app.route("/old-opposite-semantic-news", methods=["GET", "POST"])
+def old_get_opposite_news() -> tuple[str, int]:
 
     request_content = json.loads(request.data.decode("utf-8"))
     if "keyword" not in request_content:
@@ -498,8 +580,26 @@ def get_opposite_news() -> tuple[str, int]:
     return json.dumps(filtered_response), 200
 
 
-@app.route("/search", methods=["GET", "POST"])
-def search() -> tuple[str, int]:
+@app.route("/search", methods=["GET"])
+def search() -> tuple[dict, int]:
+    try:
+        keyword = request.args["query"]
+    except ValueError:
+        return {"message": "key not found: query"}, 400
+    search_result = search_news(
+        generate_newsdataapi_param(keyword, language="en"), request_newsdataapi
+    )
+    if "news" in search_result:
+        search_result = cast(SearchSuccess, search_result)
+        return {"news": search_result["news"], "count": len(search_result["news"])}, 200
+    search_result = cast(SearchError, search_result)
+    return {
+        "message": f"newsdataapi status_code {search_result['status_code']} with message {search_result['message']}"
+    }, 500
+
+
+@app.route("/old_search", methods=["GET", "POST"])
+def old_search() -> tuple[str, int]:
     try:
         request_content = json.loads(request.data.decode("utf-8"))
         if "keyword" not in request_content:
