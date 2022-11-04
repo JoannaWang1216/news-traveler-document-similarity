@@ -208,35 +208,43 @@ SearchParam = TypeVar("SearchParam", NewsDataApiParam, NewsApiParam)
 
 
 def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, SearchError]:
+    collected_news: list[News] = []
+    call_count = 0
     api = NewsDataApiClient(apikey=NEWSDATAAPI_KEY)
-    response = api.news_api(**params)
-    if response["status"] == "error":
-        return {
-            "status_code": http.HTTPStatus.BAD_REQUEST,
-            "message": f'{response["results"]["code"]}, {response["results"]["message"]}',
-        }
-    return {
-        "news": [
-            {
-                "source": news["source_id"],
-                "author": ",".join(news["creator"])
-                if news["creator"]
-                else news["source_id"],
-                "title": news["title"],
-                "description": news["description"],
-                "content": news["content"],
-                "url": news["link"],
-                "urlToImage": news["image_url"],
-                "publishedAt": news["pubDate"],
+    while len(collected_news) < 10 and call_count < 5:
+        response = api.news_api(**params)
+        if response["status"] == "error":
+            return {
+                "status_code": http.HTTPStatus.BAD_REQUEST,
+                "message": f'{response["results"]["code"]}, {response["results"]["message"]}',
             }
-            for news in response["results"]
-            if news["source_id"]
-            and news["title"]
-            and news["description"]
-            and news["content"]
-            and news["link"]
-        ]
-    }
+        collected_news.extend(
+            [
+                {
+                    "source": news["source_id"],
+                    "author": ",".join(news["creator"])
+                    if news["creator"]
+                    else news["source_id"],
+                    "title": news["title"],
+                    "description": news["description"],
+                    "content": news["content"],
+                    "url": news["link"],
+                    "urlToImage": news["image_url"],
+                    "publishedAt": news["pubDate"],
+                }
+                for news in response["results"]
+                if news["source_id"]
+                and news["title"]
+                and news["description"]
+                and news["content"]
+                and news["link"]
+            ]
+        )
+        if "nextPage" not in response:
+            break
+        params.update({"page": response["nextPage"]})
+        call_count += 1
+    return {"news": collected_news}
 
 
 def request_newsapi(params: NewsApiParam) -> Union[SearchSuccess, SearchError]:
