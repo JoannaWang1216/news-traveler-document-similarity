@@ -490,7 +490,8 @@ def get_news_sentiment_and_bias() -> tuple[
         if analyze_result["bias"] is None
         else "" + "sentimentapi error "
         if analyze_result["sentiment"] is None
-        else "" + f": {analyze_result['message']}"
+        else "" + f": {analyze_result['message']}",
+        "debug": "",
     }, http.HTTPStatus.INTERNAL_SERVER_ERROR
 
 
@@ -527,7 +528,8 @@ def get_opposite_news() -> tuple[
         search_result = cast(SearchError, search_result)
         return {
             "message": f"newsdataapi status_code {search_result['status_code']} "
-            f"with message {search_result['message']}"
+            f"with message {search_result['message']}",
+            "debug": "",
         }, http.HTTPStatus.INTERNAL_SERVER_ERROR
     search_result = cast(SearchSuccess, search_result)
     analyze_result = analyze_sentiment(article, request_sentimentapi)
@@ -582,5 +584,6 @@ def search() -> tuple[
     search_result = cast(SearchError, search_result)
     return {
         "message": f"newsdataapi status_code {search_result['status_code']} "
-        f"with message {search_result['message']}"
+        f"with message {search_result['message']}",
+        "debug": "",
     }, http.HTTPStatus.INTERNAL_SERVER_ERROR
