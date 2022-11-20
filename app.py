@@ -1,12 +1,13 @@
 import http
 import json
 import os
+import random
 from typing import Any, Callable, TypeVar, Union, cast
 
 import requests
 from dotenv import load_dotenv
 from flask import Flask, request
-from newsdataapi import NewsDataApiClient
+from newsdataapi import NewsDataApiClient, newsdataapi_exception
 from werkzeug.exceptions import BadRequestKeyError
 
 from data_types import (
@@ -37,7 +38,13 @@ from news_traveler_sentiment_analysis.sentiment_analysis import (
 
 load_dotenv()
 
-NEWSDATAAPI_KEY = os.environ["NEWSDATAAPI_KEY"]
+NEWSDATAAPI_KEY = [
+    os.environ["NEWSDATAAPI_KEY_1"],
+    os.environ["NEWSDATAAPI_KEY_2"],
+    os.environ["NEWSDATAAPI_KEY_3"],
+    os.environ["NEWSDATAAPI_KEY_4"],
+    os.environ["NEWSDATAAPI_KEY_5"],
+]
 NEWSAPI_KEY = os.environ["NEWSAPI_KEY"]
 BIASAPI_KEY = os.environ["BIASAPI_KEY"]
 
@@ -98,9 +105,15 @@ SearchParam = TypeVar("SearchParam", NewsDataApiParam, NewsApiParam)
 def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, SearchError]:
     collected_news: list[News] = []
     call_count = 0
-    api = NewsDataApiClient(apikey=NEWSDATAAPI_KEY)
     while len(collected_news) < 10 and call_count < 5:
-        response = api.news_api(**params)
+        api = NewsDataApiClient(apikey=random.choice(NEWSDATAAPI_KEY))
+        try:
+            response = api.news_api(**params)
+        except newsdataapi_exception.NewsdataException as e:
+            return {
+                "status_code": http.HTTPStatus.INTERNAL_SERVER_ERROR,
+                "message": json.loads(str(e).replace("'", '"'))["results"]["message"],
+            }
         if response["status"] == "error":
             return {
                 "status_code": http.HTTPStatus.BAD_REQUEST,
