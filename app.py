@@ -1,6 +1,7 @@
 import http
 import json
 import os
+import random
 from typing import Any, Callable, TypeVar, Union, cast
 
 import requests
@@ -37,7 +38,13 @@ from news_traveler_sentiment_analysis.sentiment_analysis import (
 
 load_dotenv()
 
-NEWSDATAAPI_KEY = os.environ["NEWSDATAAPI_KEY"]
+NEWSDATAAPI_KEY = [
+    os.environ["NEWSDATAAPI_KEY_1"],
+    os.environ["NEWSDATAAPI_KEY_2"],
+    os.environ["NEWSDATAAPI_KEY_3"],
+    os.environ["NEWSDATAAPI_KEY_4"],
+    os.environ["NEWSDATAAPI_KEY_5"],
+]
 NEWSAPI_KEY = os.environ["NEWSAPI_KEY"]
 BIASAPI_KEY = os.environ["BIASAPI_KEY"]
 
@@ -100,8 +107,8 @@ def request_newsdataapi(
 ) -> Union[SearchSuccess, SearchError]:
     collected_news: list[News] = []
     call_count = 0
-    api = NewsDataApiClient(apikey=NEWSDATAAPI_KEY)
-    while len(collected_news) < count and call_count < 5:
+    while len(collected_news) < 10 and call_count < 5:
+        api = NewsDataApiClient(apikey=random.choice(NEWSDATAAPI_KEY))
         try:
             response = api.news_api(**params)
         except newsdataapi_exception.NewsdataException as e:
