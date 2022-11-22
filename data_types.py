@@ -29,10 +29,9 @@ class Sentiment(TypedDict):
 
 
 class News(TypedDict):
-    source: str
+    source: Optional[str]
     author: Optional[str]
     title: str
-    description: str
     content: str
     url: str
     urlToImage: Optional[str]

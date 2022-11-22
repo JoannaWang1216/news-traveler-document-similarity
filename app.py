@@ -120,17 +120,20 @@ def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, Search
                     if news["creator"]
                     else news["source_id"],
                     "title": news["title"],
-                    "description": news["description"],
-                    "content": news["content"],
+                    "content": news["content"]
+                    if news["description"] is None
+                    else news["description"]
+                    if news["content"] is None
+                    else news["content"]
+                    if len(news["content"]) > len(news["description"])
+                    else news["description"],
                     "url": news["link"],
                     "urlToImage": news["image_url"],
                     "publishedAt": news["pubDate"],
                 }
                 for news in response["results"]
-                if news["source_id"]
-                and news["title"]
-                and news["description"]
-                and news["content"]
+                if news["title"]
+                and (news["description"] or news["content"])
                 and news["link"]
             ]
         )
@@ -161,17 +164,20 @@ def request_newsapi(params: NewsApiParam) -> Union[SearchSuccess, SearchError]:
                 "source": news["source"],
                 "author": news["author"],
                 "title": news["title"],
-                "description": news["description"],
-                "content": news["content"],
+                "content": news["content"]
+                if news["description"] is None
+                else news["description"]
+                if news["content"] is None
+                else news["content"]
+                if len(news["content"]) > len(news["description"])
+                else news["description"],
                 "url": news["url"],
                 "urlToImage": news["urlToImage"],
                 "publishedAt": news["publishedAt"],
             }
             for news in response.json()["articles"]
-            if news["source"]
-            and news["title"]
-            and news["description"]
-            and news["content"]
+            if news["title"]
+            and (news["description"] or news["content"])
             and news["url"]
         ]
     }
