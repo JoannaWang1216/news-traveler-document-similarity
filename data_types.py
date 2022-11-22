@@ -66,6 +66,7 @@ class NewsWithSentimentAndBias(TypedDict):
 class SearchOkResponse(TypedDict):
     count: int
     results: list[News]
+    nextOffset: Optional[int]
 
 
 class OppositeSentimentNewsOkResponse(TypedDict):
@@ -112,6 +113,7 @@ class NewsApiParam(TypedDict):
 
 class SearchSuccess(TypedDict):
     news: list[News]
+    nextOffset: Optional[int]
 
 
 class SearchError(TypedDict):

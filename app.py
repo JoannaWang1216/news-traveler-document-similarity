@@ -95,11 +95,13 @@ def generate_newapi_param(
 SearchParam = TypeVar("SearchParam", NewsDataApiParam, NewsApiParam)
 
 
-def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, SearchError]:
+def request_newsdataapi(
+    params: NewsDataApiParam, count: int
+) -> Union[SearchSuccess, SearchError]:
     collected_news: list[News] = []
     call_count = 0
     api = NewsDataApiClient(apikey=NEWSDATAAPI_KEY)
-    while len(collected_news) < 10 and call_count < 5:
+    while len(collected_news) < count and call_count < 5:
         try:
             response = api.news_api(**params)
         except newsdataapi_exception.NewsdataException as e:
@@ -114,37 +116,46 @@ def request_newsdataapi(params: NewsDataApiParam) -> Union[SearchSuccess, Search
             }
         collected_news.extend(
             [
-                {
-                    "source": news["source_id"],
-                    "author": ",".join(news["creator"])
-                    if news["creator"]
-                    else news["source_id"],
-                    "title": news["title"],
-                    "content": news["content"]
-                    if news["description"] is None
-                    else news["description"]
-                    if news["content"] is None
-                    else news["content"]
-                    if len(news["content"]) > len(news["description"])
-                    else news["description"],
-                    "url": news["link"],
-                    "urlToImage": news["image_url"],
-                    "publishedAt": news["pubDate"],
-                }
+                cast(
+                    News,
+                    {
+                        "source": news["source_id"],
+                        "author": ",".join(news["creator"])
+                        if news["creator"]
+                        else news["source_id"],
+                        "title": news["title"],
+                        "content": news["content"]
+                        if news["description"] is None
+                        else news["description"]
+                        if news["content"] is None
+                        else news["content"]
+                        if len(news["content"]) > len(news["description"])
+                        else news["description"],
+                        "url": news["link"],
+                        "urlToImage": news["image_url"],
+                        "publishedAt": news["pubDate"],
+                    },
+                )
                 for news in response["results"]
                 if news["title"]
                 and (news["description"] or news["content"])
                 and news["link"]
-            ]
+            ][: count - len(collected_news)]
         )
         if "nextPage" not in response:
+            print("no next page")
             break
         params.update({"page": response["nextPage"]})
         call_count += 1
-    return {"news": collected_news}
+    if len(collected_news) == count:
+        print(response["nextPage"])
+        return {"news": collected_news, "nextOffset": response["nextPage"]}
+    return {"news": collected_news, "nextOffset": None}
 
 
-def request_newsapi(params: NewsApiParam) -> Union[SearchSuccess, SearchError]:
+def request_newsapi(
+    params: NewsApiParam, count: int  # type: ignore
+) -> Union[SearchSuccess, SearchError]:
     _params: dict[str, Any] = {k: v for k, v in params.items() if v is not None} | {
         "apiKey": NEWSAPI_KEY
     }
@@ -179,7 +190,8 @@ def request_newsapi(params: NewsApiParam) -> Union[SearchSuccess, SearchError]:
             if news["title"]
             and (news["description"] or news["content"])
             and news["url"]
-        ]
+        ],
+        "nextOffset": None,
     }
 
 
@@ -265,9 +277,10 @@ def analyze_bias(
 
 def search_news(
     params: SearchParam,
-    call_api: Callable[[SearchParam], Union[SearchSuccess, SearchError]],
+    count: int,
+    call_api: Callable[[SearchParam, int], Union[SearchSuccess, SearchError]],
 ) -> Union[SearchSuccess, SearchError]:
-    return call_api(params)
+    return call_api(params, count)
 
 
 app = Flask(__name__)
@@ -402,7 +415,7 @@ def get_opposite_news() -> tuple[
     except KeyError as e:
         return {"message": "key not found: keyword"}, http.HTTPStatus.BAD_REQUEST
     search_result = search_news(
-        generate_newsdataapi_param(keyword, language="en"), request_newsdataapi
+        generate_newsdataapi_param(keyword, language="en"), 10, request_newsdataapi
     )
     if "news" not in search_result:
         search_result = cast(SearchError, search_result)
@@ -450,16 +463,28 @@ def search() -> tuple[
 ]:
     try:
         keyword = request.args["query"]
-    except BadRequestKeyError:
-        return {"message": "key not found: query"}, http.HTTPStatus.BAD_REQUEST
+        count = int(request.args["count"])
+        if count < 1:
+            raise ValueError("count must be > 1")
+        offset = int(request.args["offset"]) if "offset" in request.args else None
+        if offset is not None and offset < 0:
+            raise ValueError("offset must be >= 0")
+    except BadRequestKeyError as e:
+        e.show_exception = True
+        return {"message": "key not found: " + e.args[0]}, http.HTTPStatus.BAD_REQUEST
+    except ValueError as e:
+        return {"message": e.args[0]}, http.HTTPStatus.BAD_REQUEST
     search_result = search_news(
-        generate_newsdataapi_param(keyword, language="en"), request_newsdataapi
+        generate_newsdataapi_param(keyword, language="en", page=offset),
+        count,
+        request_newsdataapi,
     )
     if "news" in search_result:
         search_result = cast(SearchSuccess, search_result)
         return {
             "results": search_result["news"],
             "count": len(search_result["news"]),
+            "nextOffset": search_result["nextOffset"],
         }, http.HTTPStatus.OK
     search_result = cast(SearchError, search_result)
     return {
