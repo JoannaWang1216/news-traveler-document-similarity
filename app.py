@@ -149,13 +149,11 @@ def request_newsdataapi(
                 and news["link"]
             ][: count - len(collected_news)]
         )
-        if "nextPage" not in response:
-            print("no next page")
+        if response["nextPage"] is None:
             break
         params.update({"page": response["nextPage"]})
         call_count += 1
     if len(collected_news) == count:
-        print(response["nextPage"])
         return {"news": collected_news, "nextOffset": response["nextPage"]}
     return {"news": collected_news, "nextOffset": None}
 
