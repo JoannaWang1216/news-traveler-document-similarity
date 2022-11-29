@@ -112,7 +112,7 @@ def request_newsdataapi(
     MAX_CALL_COUNT: Final = 5
     collected_news: list[News] = []
     call_count = 0
-    while len(collected_news) < 10 and call_count < MAX_CALL_COUNT:
+    while len(collected_news) < count and call_count < MAX_CALL_COUNT:
         api = NewsDataApiClient(apikey=random.choice(NEWSDATAAPI_KEY))
         try:
             response = api.news_api(**params)
