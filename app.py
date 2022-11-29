@@ -326,12 +326,11 @@ def search_news_with_filter(
                     cast(
                         NewsWithSentiment,
                         cast(dict, news)
-                        | (
-                            cast(
-                                dict,
-                                call_sentimentapi(news["content"]),
-                            )["value"]
-                        ),
+                        | {
+                            "sentiment": cast(
+                                dict, call_sentimentapi(news["content"])["value"]
+                            )
+                        },
                     )
                     for news in result["news"]
                     if cast(
@@ -507,7 +506,10 @@ def search_with_filters() -> tuple[
                 "sentimentFilter must be a list of positive, negative, neutral"
             )
         sentiment_filter: list[SentimentLabel] = cast(
-            list[SentimentLabel], request_content["sentimentFilter"]
+            list[SentimentLabel],
+            request_content["sentimentFilter"]
+            if request_content["sentimentFilter"]
+            else ["positive", "negative", "neutral"],
         )
     except KeyError as e:
         return {
