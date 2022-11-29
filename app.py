@@ -21,10 +21,11 @@ from data_types import (
     NewsApiParam,
     NewsDataApiParam,
     NewsWithSentiment,
-    OppositeSentimentNewsOkResponse,
     SearchError,
     SearchOkResponse,
     SearchSuccess,
+    SearchWithFilterOkResponse,
+    SearchWithSentimentSuccess,
     SentimentAnalysisError,
     SentimentAnalysisSuccess,
     SentimentAndBiasError,
@@ -243,12 +244,9 @@ def request_sentimentapi(
 
 
 def request_similarityapi(
-    base_article: str, article: str
+    base_article: str, article: str, threshold: float
 ) -> Union[SimilarityAnalysisSuccess, SimilarityAnalysisError]:
-    process_tfidf_similarity(
-        base_article,
-        article,
-    )
+    return {"is_similar": process_tfidf_similarity(base_article, article, threshold)}
 
 
 def analyze_sentiment_and_bias(
@@ -312,26 +310,36 @@ def search_news_with_filter(
         [str], Union[SentimentAnalysisSuccess, SentimentAnalysisError]
     ],
     call_similarityapi: Callable[
-        [str, str], Union[SimilarityAnalysisSuccess, SimilarityAnalysisError]
+        [str, str, float], Union[SimilarityAnalysisSuccess, SimilarityAnalysisError]
     ],
     sentiment_labels: list[SentimentLabel],
     similarity_threshold: float,
     base_article: str,
-) -> Union[SearchSuccess, SearchError]:
-    collected_news: list[News] = []
+) -> Union[SearchWithSentimentSuccess, SearchError]:
+    collected_news: list[NewsWithSentiment] = []
     while len(collected_news) < count:
         result = call_newsapi(params, 10, False)
         if "news" in result:
             result = cast(SearchSuccess, result)
             collected_news.extend(
                 [
-                    news
+                    cast(
+                        NewsWithSentiment,
+                        cast(dict, news)
+                        | (
+                            cast(
+                                dict,
+                                call_sentimentapi(news["content"]),
+                            )["value"]
+                        ),
+                    )
                     for news in result["news"]
                     if cast(
                         SimilarityAnalysisSuccess,
-                        call_similarityapi(base_article, news["content"]),
-                    )["value"]
-                    >= similarity_threshold
+                        call_similarityapi(
+                            base_article, news["content"], similarity_threshold
+                        ),
+                    )["is_similar"]
                     and cast(
                         SentimentAnalysisSuccess, call_sentimentapi(news["content"])
                     )["value"]["kind"]
@@ -455,12 +463,12 @@ def get_news_sentiment_and_bias() -> tuple[
 
 
 @app.route("/opposite-sentiment-news", methods=["POST"])
-def get_opposite_news() -> tuple[
+def search_with_filters() -> tuple[
     Union[
         ErrorResponse,
         InternalErrorResponse,
         GatewayTimeoutResponse,
-        OppositeSentimentNewsOkResponse,
+        SearchWithFilterOkResponse,
     ],
     int,
 ]:
@@ -491,13 +499,31 @@ def get_opposite_news() -> tuple[
             "message": "key not found: similarityThreshold"
         }, http.HTTPStatus.BAD_REQUEST
     try:
-        sentiment_filter: list[str] = request_content["sentimentFilter"]
+        if not all(
+            sentiment in ["positive", "negative", "neutral"]
+            for sentiment in request_content["sentimentFilter"]
+        ):
+            raise ValueError(
+                "sentimentFilter must be a list of positive, negative, neutral"
+            )
+        sentiment_filter: list[SentimentLabel] = cast(
+            list[SentimentLabel], request_content["sentimentFilter"]
+        )
     except KeyError as e:
         return {
             "message": "key not found: sentimentFilter"
         }, http.HTTPStatus.BAD_REQUEST
-    search_result = search_news(
-        generate_newsdataapi_param(keyword, language="en"), 10, request_newsdataapi
+    except ValueError as e:
+        return {"message": str(e)}, http.HTTPStatus.BAD_REQUEST
+    search_result = search_news_with_filter(
+        generate_newsdataapi_param(keyword, language="en"),
+        count,
+        request_newsdataapi,
+        request_sentimentapi,
+        request_similarityapi,
+        sentiment_filter,
+        similarity_threshold,
+        article,
     )
     if "news" not in search_result:
         search_result = cast(SearchError, search_result)
@@ -506,33 +532,11 @@ def get_opposite_news() -> tuple[
             f"with message {search_result['message']}",
             "debug": "",
         }, http.HTTPStatus.INTERNAL_SERVER_ERROR
-    search_result = cast(SearchSuccess, search_result)
-    analyze_result = analyze_sentiment(article, request_sentimentapi)
-    if "status_code" in analyze_result:
-        analyze_result = cast(SentimentAnalysisError, analyze_result)
-        return {
-            "message": analyze_result["message"]
-        }, http.HTTPStatus.INTERNAL_SERVER_ERROR
-    current_sentiment = cast(SentimentAnalysisSuccess, analyze_result)["value"]
-    filtered_results: list[NewsWithSentiment] = []
-    for news in search_result["news"]:
-        if len(filtered_results) == 3:
-            break
-        analyze_result = analyze_sentiment(news["content"], request_sentimentapi)
-        if "status_code" in analyze_result:
-            analyze_result = cast(SentimentAnalysisError, analyze_result)
-            return {
-                "message": analyze_result["message"]
-            }, http.HTTPStatus.INTERNAL_SERVER_ERROR
-        analyze_result = cast(SentimentAnalysisSuccess, analyze_result)
-        filtered_news = cast(
-            NewsWithSentiment, cast(dict, news) | {"sentiment": analyze_result["value"]}
-        )
-        if analyze_result["value"]["kind"] != current_sentiment["kind"]:
-            filtered_results.append(filtered_news)
+    search_result = cast(SearchWithSentimentSuccess, search_result)
+
     return {
-        "results": filtered_results,
-        "count": len(filtered_results),
+        "results": search_result["news"],
+        "count": len(search_result["news"]),
     }, http.HTTPStatus.OK
 
 

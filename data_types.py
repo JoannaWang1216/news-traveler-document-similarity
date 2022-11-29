@@ -72,7 +72,7 @@ class SearchOkResponse(TypedDict):
     nextOffset: Optional[int]
 
 
-class OppositeSentimentNewsOkResponse(TypedDict):
+class SearchWithFilterOkResponse(TypedDict):
     count: int
     results: list[NewsWithSentiment]
 
@@ -119,6 +119,11 @@ class SearchSuccess(TypedDict):
     nextOffset: Optional[int]
 
 
+class SearchWithSentimentSuccess(TypedDict):
+    news: list[NewsWithSentiment]
+    nextOffset: Optional[int]
+
+
 class SearchError(TypedDict):
     status_code: int
     message: str
@@ -155,7 +160,7 @@ class SentimentAnalysisError(TypedDict):
 
 
 class SimilarityAnalysisSuccess(TypedDict):
-    value: float
+    is_similar: bool
 
 
 class SimilarityAnalysisError(TypedDict):
