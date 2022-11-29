@@ -23,8 +23,11 @@ class GatewayTimeoutResponse(TypedDict):
     reason: str
 
 
+SentimentLabel = Literal["positive", "neutral", "negative"]
+
+
 class Sentiment(TypedDict):
-    kind: Literal["positive", "neutral", "negative"]
+    kind: SentimentLabel
     confidence: float
 
 
@@ -147,6 +150,15 @@ class SentimentAnalysisSuccess(TypedDict):
 
 
 class SentimentAnalysisError(TypedDict):
+    status_code: int
+    message: str
+
+
+class SimilarityAnalysisSuccess(TypedDict):
+    value: float
+
+
+class SimilarityAnalysisError(TypedDict):
     status_code: int
     message: str
 

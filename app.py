@@ -2,7 +2,7 @@ import http
 import json
 import os
 import random
-from typing import Any, Callable, TypeVar, Union, cast
+from typing import Any, Callable, Final, TypeVar, Union, cast
 
 import requests
 from dotenv import load_dotenv
@@ -30,8 +30,12 @@ from data_types import (
     SentimentAndBiasError,
     SentimentAndBiasOkResponse,
     SentimentAndBiasSuccess,
+    SentimentLabel,
     SentimentOkResponse,
+    SimilarityAnalysisError,
+    SimilarityAnalysisSuccess,
 )
+from news_traveler_document_similarity.tfidf_similarity import process_tfidf_similarity
 from news_traveler_sentiment_analysis.sentiment_analysis import (
     sentiment_analysis_per_document,
 )
@@ -103,11 +107,12 @@ SearchParam = TypeVar("SearchParam", NewsDataApiParam, NewsApiParam)
 
 
 def request_newsdataapi(
-    params: NewsDataApiParam, count: int
+    params: NewsDataApiParam, count: int, exact_count: bool
 ) -> Union[SearchSuccess, SearchError]:
+    MAX_CALL_COUNT: Final = 5
     collected_news: list[News] = []
     call_count = 0
-    while len(collected_news) < 10 and call_count < 5:
+    while len(collected_news) < 10 and call_count < MAX_CALL_COUNT:
         api = NewsDataApiClient(apikey=random.choice(NEWSDATAAPI_KEY))
         try:
             response = api.news_api(**params)
@@ -147,19 +152,21 @@ def request_newsdataapi(
                 if news["title"]
                 and (news["description"] or news["content"])
                 and news["link"]
-            ][: count - len(collected_news)]
+            ]
         )
         if response["nextPage"] is None:
             break
         params.update({"page": response["nextPage"]})
         call_count += 1
-    if len(collected_news) == count:
+    if exact_count:
+        collected_news = collected_news[:count]
+    if len(collected_news) >= count:
         return {"news": collected_news, "nextOffset": response["nextPage"]}
     return {"news": collected_news, "nextOffset": None}
 
 
 def request_newsapi(
-    params: NewsApiParam, count: int  # type: ignore
+    params: NewsApiParam, count: int, exact_count: bool  # type: ignore
 ) -> Union[SearchSuccess, SearchError]:
     _params: dict[str, Any] = {k: v for k, v in params.items() if v is not None} | {
         "apiKey": NEWSAPI_KEY
@@ -235,6 +242,15 @@ def request_sentimentapi(
     }
 
 
+def request_similarityapi(
+    base_article: str, article: str
+) -> Union[SimilarityAnalysisSuccess, SimilarityAnalysisError]:
+    process_tfidf_similarity(
+        base_article,
+        article,
+    )
+
+
 def analyze_sentiment_and_bias(
     article: str,
     call_biasapi: Callable[[str], Union[BiasAnalysisSuccess, BiasAnalysisError]],
@@ -283,9 +299,54 @@ def analyze_bias(
 def search_news(
     params: SearchParam,
     count: int,
-    call_api: Callable[[SearchParam, int], Union[SearchSuccess, SearchError]],
+    call_api: Callable[[SearchParam, int, bool], Union[SearchSuccess, SearchError]],
 ) -> Union[SearchSuccess, SearchError]:
-    return call_api(params, count)
+    return call_api(params, count, True)
+
+
+def search_news_with_filter(
+    params: SearchParam,
+    count: int,
+    call_newsapi: Callable[[SearchParam, int, bool], Union[SearchSuccess, SearchError]],
+    call_sentimentapi: Callable[
+        [str], Union[SentimentAnalysisSuccess, SentimentAnalysisError]
+    ],
+    call_similarityapi: Callable[
+        [str, str], Union[SimilarityAnalysisSuccess, SimilarityAnalysisError]
+    ],
+    sentiment_labels: list[SentimentLabel],
+    similarity_threshold: float,
+    base_article: str,
+) -> Union[SearchSuccess, SearchError]:
+    collected_news: list[News] = []
+    while len(collected_news) < count:
+        result = call_newsapi(params, 10, False)
+        if "news" in result:
+            result = cast(SearchSuccess, result)
+            collected_news.extend(
+                [
+                    news
+                    for news in result["news"]
+                    if cast(
+                        SimilarityAnalysisSuccess,
+                        call_similarityapi(base_article, news["content"]),
+                    )["value"]
+                    >= similarity_threshold
+                    and cast(
+                        SentimentAnalysisSuccess, call_sentimentapi(news["content"])
+                    )["value"]["kind"]
+                    in sentiment_labels
+                ]
+            )
+            if result["nextOffset"] is None:
+                break
+            params["page"] = result["nextOffset"]
+        else:
+            return cast(SearchError, result)
+    return {
+        "news": collected_news[:count],
+        "nextOffset": cast(SearchSuccess, result)["nextOffset"],
+    }
 
 
 app = Flask(__name__)
@@ -419,6 +480,22 @@ def get_opposite_news() -> tuple[
         keyword = request_content["keyword"]
     except KeyError as e:
         return {"message": "key not found: keyword"}, http.HTTPStatus.BAD_REQUEST
+    try:
+        count = request_content["count"]
+    except KeyError as e:
+        return {"message": "key not found: count"}, http.HTTPStatus.BAD_REQUEST
+    try:
+        similarity_threshold = request_content["similarityThreshold"]
+    except KeyError as e:
+        return {
+            "message": "key not found: similarityThreshold"
+        }, http.HTTPStatus.BAD_REQUEST
+    try:
+        sentiment_filter: list[str] = request_content["sentimentFilter"]
+    except KeyError as e:
+        return {
+            "message": "key not found: sentimentFilter"
+        }, http.HTTPStatus.BAD_REQUEST
     search_result = search_news(
         generate_newsdataapi_param(keyword, language="en"), 10, request_newsdataapi
     )
