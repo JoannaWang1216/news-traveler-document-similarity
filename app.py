@@ -7,6 +7,7 @@ from typing import Any, Callable, Final, TypeVar, Union, cast
 import requests
 from dotenv import load_dotenv
 from flask import Flask, request
+from flask_caching import Cache
 from newsdataapi import NewsDataApiClient, newsdataapi_exception
 from werkzeug.exceptions import BadRequestKeyError
 
@@ -40,6 +41,16 @@ from news_traveler_document_similarity.tfidf_similarity import process_tfidf_sim
 from news_traveler_sentiment_analysis.sentiment_analysis import (
     sentiment_analysis_per_document,
 )
+
+config = {
+    "DEBUG": True,
+    "CACHE_TYPE": "SimpleCache",
+    "CACHE_DEFAULT_TIMEOUT": 60 * 10,
+}
+
+app = Flask(__name__)
+app.config.from_mapping(config)
+cache = Cache(app)
 
 load_dotenv()
 
@@ -107,6 +118,7 @@ def generate_newapi_param(
 SearchParam = TypeVar("SearchParam", NewsDataApiParam, NewsApiParam)
 
 
+@cache.memoize(60 * 10)
 def request_newsdataapi(
     params: NewsDataApiParam, count: int, exact_count: bool
 ) -> Union[SearchSuccess, SearchError]:
@@ -166,6 +178,7 @@ def request_newsdataapi(
     return {"news": collected_news, "nextOffset": None}
 
 
+@cache.memoize(60 * 10)
 def request_newsapi(
     params: NewsApiParam, count: int, exact_count: bool  # type: ignore
 ) -> Union[SearchSuccess, SearchError]:
@@ -354,9 +367,6 @@ def search_news_with_filter(
         "news": collected_news[:count],
         "nextOffset": cast(SearchSuccess, result)["nextOffset"],
     }
-
-
-app = Flask(__name__)
 
 
 @app.route("/sentiment", methods=["POST"])

@@ -48,6 +48,14 @@ jupyter = ["ipython (>=7.8.0)", "tokenize-rt (>=3.2.0)"]
 uvloop = ["uvloop (>=0.15.2)"]
 
 [[package]]
+name = "cachelib"
+version = "0.9.0"
+description = "A collection of cache libraries in the same API interface."
+category = "main"
+optional = false
+python-versions = ">=3.7"
+
+[[package]]
 name = "certifi"
 version = "2022.9.24"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -137,6 +145,18 @@ Werkzeug = ">=2.2.2"
 [package.extras]
 async = ["asgiref (>=3.2)"]
 dotenv = ["python-dotenv"]
+
+[[package]]
+name = "flask-caching"
+version = "2.0.1"
+description = "Adds caching support to Flask applications."
+category = "main"
+optional = false
+python-versions = ">=3.7"
+
+[package.dependencies]
+cachelib = ">=0.9.0"
+Flask = "<3"
 
 [[package]]
 name = "huggingface-hub"
@@ -690,7 +710,7 @@ testing = ["flake8 (<5)", "func-timeout", "jaraco.functools", "jaraco.itertools"
 [metadata]
 lock-version = "1.1"
 python-versions = "~3.9"
-content-hash = "d88bddccb58957c554ee2af41c3544c0313a67ddc0dfb4bd7dcea4d20819592b"
+content-hash = "472b84659ff7af72568e1268a594b24dc247b4063d5112b9245a53acf9413986"
 
 [metadata.files]
 astroid = [
@@ -724,6 +744,10 @@ black = [
     {file = "black-22.10.0-py3-none-any.whl", hash = "sha256:c957b2b4ea88587b46cf49d1dc17681c1e672864fd7af32fc1e9664d572b3458"},
     {file = "black-22.10.0.tar.gz", hash = "sha256:f513588da599943e0cde4e32cc9879e825d58720d6557062d1098c5ad80080e1"},
 ]
+cachelib = [
+    {file = "cachelib-0.9.0-py3-none-any.whl", hash = "sha256:811ceeb1209d2fe51cd2b62810bd1eccf70feba5c52641532498be5c675493b3"},
+    {file = "cachelib-0.9.0.tar.gz", hash = "sha256:38222cc7c1b79a23606de5c2607f4925779e37cdcea1c2ad21b8bae94b5425a5"},
+]
 certifi = [
     {file = "certifi-2022.9.24-py3-none-any.whl", hash = "sha256:90c1a32f1d68f940488354e36370f6cca89f0f106db09518524c88d6ed83f382"},
     {file = "certifi-2022.9.24.tar.gz", hash = "sha256:0d9c601124e5a6ba9712dbc60d9c53c21e34f5f641fe83002317394311bdce14"},
@@ -755,6 +779,10 @@ filelock = [
 flask = [
     {file = "Flask-2.2.2-py3-none-any.whl", hash = "sha256:b9c46cc36662a7949f34b52d8ec7bb59c0d74ba08ba6cb9ce9adc1d8676d9526"},
     {file = "Flask-2.2.2.tar.gz", hash = "sha256:642c450d19c4ad482f96729bd2a8f6d32554aa1e231f4f6b4e7e5264b16cca2b"},
+]
+flask-caching = [
+    {file = "Flask-Caching-2.0.1.tar.gz", hash = "sha256:10df200a03f032af60077befe41779dd94898b67c82040d34e87210b71ba2638"},
+    {file = "Flask_Caching-2.0.1-py3-none-any.whl", hash = "sha256:703df847cbe904d8ddffd5f5fb320e236a31cb7bebac4a93d6b1701dd16dbf37"},
 ]
 huggingface-hub = [
     {file = "huggingface_hub-0.10.1-py3-none-any.whl", hash = "sha256:dc3b0e9a663fe6cad6a8522055c02a9d8673dbd527223288e2442bc028c253db"},
