@@ -246,6 +246,7 @@ def request_biasapi_mock(article: str) -> Union[BiasAnalysisSuccess, BiasAnalysi
     return {"value": (abs(hash(article)) % 100) / 50.0 - 1.0}
 
 
+@cache.memoize(CACHE_DEFAULT_TIMEOUT)
 def request_sentimentapi(
     article: str,
 ) -> Union[SentimentAnalysisSuccess, SentimentAnalysisError]:
@@ -262,10 +263,15 @@ def request_sentimentapi(
     }
 
 
+@cache.memoize(CACHE_DEFAULT_TIMEOUT)
+def _request_similarityapi(base_article: str, target_article: str) -> float:
+    return process_tfidf_similarity(base_article, target_article)
+
+
 def request_similarityapi(
     base_article: str, article: str, threshold: float
 ) -> Union[SimilarityAnalysisSuccess, SimilarityAnalysisError]:
-    return {"is_similar": process_tfidf_similarity(base_article, article, threshold)}
+    return {"is_similar": _request_similarityapi(base_article, article) > threshold}
 
 
 def analyze_sentiment_and_bias(
