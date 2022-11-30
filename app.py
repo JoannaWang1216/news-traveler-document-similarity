@@ -2,6 +2,7 @@ import http
 import json
 import os
 import random
+import re
 from typing import Any, Callable, Final, TypeVar, Union, cast
 
 import requests
@@ -42,10 +43,12 @@ from news_traveler_sentiment_analysis.sentiment_analysis import (
     sentiment_analysis_per_document,
 )
 
+CACHE_DEFAULT_TIMEOUT = 60 * 60 * 24  # 1 day
+
 config = {
     "DEBUG": True,
     "CACHE_TYPE": "SimpleCache",
-    "CACHE_DEFAULT_TIMEOUT": 60 * 10,
+    "CACHE_DEFAULT_TIMEOUT": CACHE_DEFAULT_TIMEOUT,
 }
 
 app = Flask(__name__)
@@ -54,13 +57,11 @@ cache = Cache(app)
 
 load_dotenv()
 
+newsdataapi_keys_re = re.compile(r"NEWSDATAAPI_KEY_(\d+)")
 NEWSDATAAPI_KEY = [
-    os.environ["NEWSDATAAPI_KEY_1"],
-    os.environ["NEWSDATAAPI_KEY_2"],
-    os.environ["NEWSDATAAPI_KEY_3"],
-    os.environ["NEWSDATAAPI_KEY_4"],
-    os.environ["NEWSDATAAPI_KEY_5"],
+    value for key, value in os.environ.items() if newsdataapi_keys_re.match(key)
 ]
+print("Available keys:", len(NEWSDATAAPI_KEY))
 NEWSAPI_KEY = os.environ["NEWSAPI_KEY"]
 BIASAPI_KEY = os.environ["BIASAPI_KEY"]
 
@@ -118,7 +119,13 @@ def generate_newapi_param(
 SearchParam = TypeVar("SearchParam", NewsDataApiParam, NewsApiParam)
 
 
-@cache.memoize(60 * 10)
+@cache.memoize(CACHE_DEFAULT_TIMEOUT)
+def _request_newsdataapi(params: NewsDataApiParam) -> Any:
+    api = NewsDataApiClient(apikey=random.choice(NEWSDATAAPI_KEY))
+    return api.news_api(**params)
+
+
+@cache.memoize(CACHE_DEFAULT_TIMEOUT)
 def request_newsdataapi(
     params: NewsDataApiParam, count: int, exact_count: bool
 ) -> Union[SearchSuccess, SearchError]:
@@ -126,9 +133,8 @@ def request_newsdataapi(
     collected_news: list[News] = []
     call_count = 0
     while len(collected_news) < count and call_count < MAX_CALL_COUNT:
-        api = NewsDataApiClient(apikey=random.choice(NEWSDATAAPI_KEY))
         try:
-            response = api.news_api(**params)
+            response = _request_newsdataapi(params)
         except newsdataapi_exception.NewsdataException as e:
             return {
                 "status_code": http.HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -178,7 +184,7 @@ def request_newsdataapi(
     return {"news": collected_news, "nextOffset": None}
 
 
-@cache.memoize(60 * 10)
+@cache.memoize(CACHE_DEFAULT_TIMEOUT)
 def request_newsapi(
     params: NewsApiParam, count: int, exact_count: bool  # type: ignore
 ) -> Union[SearchSuccess, SearchError]:
