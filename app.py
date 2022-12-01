@@ -362,6 +362,7 @@ def search_news_with_filter(
                         SentimentAnalysisSuccess, call_sentimentapi(news["content"])
                     )["value"]["kind"]
                     in sentiment_labels
+                    and news["content"] != base_article
                 ]
             )
             if result["nextOffset"] is None:
